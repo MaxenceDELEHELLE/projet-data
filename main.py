@@ -6,6 +6,9 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__))))
 
 from src.pages.home import layout as home_layout
 from src.pages.more_complex_page.layout import create_map_layout as map_layout
+from src.utils.get_data import main_get_data
+
+main_get_data()
 
 app = Dash(__name__, suppress_callback_exceptions=True)
 

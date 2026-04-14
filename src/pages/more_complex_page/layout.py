@@ -1,12 +1,20 @@
 from dash import dcc, html
 import plotly.express as px
 import pandas as pd
-from config import RAW_DATA_PATH_ACCIDENTS
+import sqlite3
+from config import RAW_DATA_PATH_ACCIDENTS_SQL
 
+TABLE_NAME = "data"
 
 def create_map_layout():
     try:
-        df = pd.read_csv(RAW_DATA_PATH_ACCIDENTS)
+        conn = sqlite3.connect(RAW_DATA_PATH_ACCIDENTS_SQL)
+        print("succes")
+        df = pd.read_sql_query(f"SELECT * FROM {TABLE_NAME}", conn)
+        print("NB lignes:", len(df))
+        print(df.columns)
+        print(df[["lat", "long", "grav"]].head())
+        conn.close()
     except Exception:
         df = pd.DataFrame({
             'lat': [48.8566, 45.7640, 43.2965],
@@ -36,12 +44,9 @@ def create_map_layout():
     fig.update_layout(margin={"r":0,"t":0,"l":0,"b":0})
 
     return html.Div([
-
         html.H2("Carte des accidents en France"),
-
         dcc.Graph(
             id="map-accidents",
             figure=fig
         )
-
     ])

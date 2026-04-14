@@ -3,6 +3,7 @@ import os
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 RAW_DATA_PATH_ACCIDENTS = os.path.join(DATA_DIR, "raw", "accidentsVelo.csv")
+RAW_DATA_PATH_ACCIDENTS_SQL = os.path.join(DATA_DIR, "raw", "accidentsVelo.db")
 CLEANED_DATA_PATH = os.path.join(DATA_DIR, "cleaned", "cleaneddata.csv")
 
 COLORS = {
