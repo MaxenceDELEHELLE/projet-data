@@ -17,7 +17,6 @@ import pandas as pd
 
 # ── Dépendances Dash ─────────────────────────────────────────────────────────
 from dash import Dash, html, dcc, Input, Output, dash_table
-import dash_bootstrap_components as dbc
 
 # ── Modules du projet ────────────────────────────────────────────────────────
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
