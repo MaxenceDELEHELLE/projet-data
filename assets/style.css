@@ -1,0 +1,98 @@
+
+/* ── Reset & Base ────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #f0f4f8; font-family: 'Inter', sans-serif; color: #1a1f2e; }
+
+/* ── Layout ─────────────────────────────────── */
+.app-wrapper { min-height: 100vh; display: flex; flex-direction: column; }
+.main-container { max-width: 1400px; margin: 0 auto; padding: 24px 20px; flex: 1; width: 100%; }
+.page-content { display: flex; flex-direction: column; gap: 24px; }
+
+/* ── Header ──────────────────────────────────── */
+.header {
+    background: linear-gradient(135deg, #264653 0%, #2a9d8f 100%);
+    color: white; padding: 28px 40px;
+}
+.header-inner { max-width: 1400px; margin: 0 auto; display: flex; align-items: center; gap: 20px; }
+.header-icon { font-size: 3rem; line-height: 1; }
+.header-text h1 {
+    font-family: 'Syne', sans-serif;
+    font-size: 2rem; font-weight: 800;
+    letter-spacing: -0.5px; line-height: 1.1;
+}
+.header-text p { opacity: 0.85; font-size: 0.9rem; margin-top: 6px; }
+
+/* ── KPI Row ─────────────────────────────────── */
+.kpi-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.kpi-card {
+    background: white; border-radius: 12px;
+    padding: 20px 24px; display: flex; align-items: center; gap: 16px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.06);
+    border-left: 4px solid transparent;
+    transition: transform .15s, box-shadow .15s;
+}
+.kpi-card:hover { transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,.1); }
+.kpi-blue  { border-color: #4361ee; }
+.kpi-green { border-color: #2a9d8f; }
+.kpi-red   { border-color: #e63946; }
+.kpi-teal  { border-color: #264653; }
+.kpi-icon  { font-size: 2rem; }
+.kpi-value { font-size: 1.5rem; font-weight: 700; line-height: 1; }
+.kpi-label { font-size: 0.78rem; color: #6c757d; margin-top: 4px; }
+
+/* ── Cards ───────────────────────────────────── */
+.card {
+    background: white; border-radius: 14px;
+    padding: 28px; box-shadow: 0 1px 4px rgba(0,0,0,.06);
+}
+.card h3 { font-family: 'Syne', sans-serif; font-size: 1.15rem; font-weight: 700; margin-bottom: 6px; }
+.chart-subtitle { color: #6c757d; font-size: 0.85rem; margin-bottom: 18px; }
+
+/* ── Two-column ──────────────────────────────── */
+.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+
+/* ── Intro ───────────────────────────────────── */
+.section-intro {
+    background: linear-gradient(135deg, #e8f8f6 0%, #eef2ff 100%);
+    border-radius: 12px; padding: 24px 28px;
+    border-left: 4px solid #2a9d8f;
+}
+.section-intro h2 { font-family: 'Syne', sans-serif; font-size: 1.25rem; margin-bottom: 8px; }
+.section-intro p  { color: #495057; font-size: 0.9rem; line-height: 1.6; }
+
+/* ── Controls ────────────────────────────────── */
+.histogram-controls, .scatter-controls { margin-bottom: 16px; }
+.histogram-controls label, .scatter-controls label {
+    font-size: 0.82rem; font-weight: 600; color: #495057;
+    display: block; margin-bottom: 8px;
+}
+.search-input {
+    border: 1.5px solid #dee2e6; border-radius: 8px;
+    padding: 8px 14px; font-size: 0.9rem; font-family: 'Inter', sans-serif;
+    outline: none; width: 280px; transition: border-color .2s;
+}
+.search-input:focus { border-color: #2a9d8f; }
+.table-controls { margin-bottom: 16px; }
+.category-checklist { display: flex; gap: 16px; flex-wrap: wrap; }
+
+/* ── Table ───────────────────────────────────── */
+.table-wrapper { overflow: auto; border-radius: 8px; border: 1px solid #f1f3f5; }
+
+/* ── Footer ──────────────────────────────────── */
+.footer {
+    background: #1a1f2e; color: #adb5bd;
+    text-align: center; padding: 20px;
+    font-size: 0.8rem; line-height: 1.8;
+}
+.footer a { color: #2a9d8f; text-decoration: none; }
+.footer a:hover { text-decoration: underline; }
+
+/* ── Responsive ──────────────────────────────── */
+@media (max-width: 1024px) {
+    .two-col { grid-template-columns: 1fr; }
+    .kpi-row  { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 600px) {
+    .kpi-row  { grid-template-columns: 1fr; }
+    .header-text h1 { font-size: 1.4rem; }
+}
