@@ -165,7 +165,6 @@ def build_home_layout(df_villes: pd.DataFrame, df_ts: pd.DataFrame) -> html.Div:
                 children=[
                     html.H3("Données détaillées"),
                     html.P(
-                        "Recherchez une ville ou triez les colonnes.",
                         className="chart-subtitle",
                     ),
                     html.Div(
