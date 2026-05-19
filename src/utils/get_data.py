@@ -1,102 +1,116 @@
-"""
-get_data.py
------------
-Récupère les données depuis les APIs publiques :
-  - Données d'accidents corporels de la route (data.gouv.fr)
-  - Données d'aménagements cyclables (transport.data.gouv.fr)
-
-Les données brutes sont stockées dans data/raw/.
-"""
-
 import os
 import requests
-import json
+import sqlite3
+import pandas as pd
 
-# Répertoire de stockage des données brutes
-RAW_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data", "raw")
+# --- Configuration des chemins ---
+# On définit le dossier racine par rapport à l'emplacement du script
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+RAW_DIR = os.path.normpath(os.path.join(BASE_DIR, "..", "..", "data", "raw"))
 
+# Chemins des fichiers de sortie
+DB_PATH = os.path.join(RAW_DIR, "accidentsVelo.db")
+ACCIDENTS_CSV = os.path.join(RAW_DIR, "accidents_2023.csv")
+CYCLABLE_GEOJSON = os.path.join(RAW_DIR, "amenagements_cyclables.geojson")
+COMMUNES_GEOJSON = os.path.join(RAW_DIR, "communes_idf.geojson")
+VILLES_CLEAN_PATH = os.path.join(RAW_DIR, "villes_clean.csv")
 
 def ensure_dir(path: str) -> None:
     """Crée le répertoire s'il n'existe pas."""
-    os.makedirs(path, exist_ok=True)
+    if not os.path.exists(path):
+        os.makedirs(path, exist_ok=True)
+        print(f"[get_data] Répertoire créé : {path}")
 
-
-def fetch_accidents() -> str:
+def fetch_accidents_velo_sqlite():
     """
-    Télécharge les caractéristiques des accidents corporels depuis data.gouv.fr.
-    Source : https://www.data.gouv.fr/fr/datasets/bases-de-donnees-annuelles-des-accidents-corporels-de-la-circulation-routiere-annees-de-2005-a-2023/
-    Retourne le chemin du fichier sauvegardé.
+    Télécharge les accidents vélos (Koumoul) et les injecte dans SQLite.
+    Source : OpenData Koumoul
     """
     ensure_dir(RAW_DIR)
-    dest = os.path.join(RAW_DIR, "accidents_2023.csv")
-    if os.path.exists(dest):
-        print(f"[get_data] Fichier accidents déjà présent : {dest}")
-        return dest
+    url = "https://opendata.koumoul.com/data-fair/api/v1/datasets/accidents-velos/raw"
+    
+    print(f"[get_data] Chargement des accidents vélos depuis Koumoul...")
+    try:
+        # Lecture du CSV distant avec Pandas
+        df = pd.read_csv(
+            url,
+            sep=None,         # Détection automatique du séparateur
+            engine="python",
+            on_bad_lines="skip"
+        )
+        
+        # Connexion à SQLite et sauvegarde
+        conn = sqlite3.connect(DB_PATH)
+        df.to_sql("data", conn, if_exists="replace", index=False)
+        conn.close()
+        
+        print(f"[get_data] Succès : {len(df)} lignes stockées dans {DB_PATH}")
+    except Exception as e:
+        print(f"[get_data] Erreur accidents vélos (Koumoul) : {e}")
+
+def fetch_accidents_gouv():
+    """Télécharge les caractéristiques accidents 2023 (Data.gouv)."""
+    ensure_dir(RAW_DIR)
+    if os.path.exists(ACCIDENTS_CSV):
+        print(f"[get_data] Fichier déjà présent : {ACCIDENTS_CSV}")
+        return
 
     url = "https://static.data.gouv.fr/resources/bases-de-donnees-annuelles-des-accidents-corporels-de-la-circulation-routiere-annees-de-2005-a-2023/20231231-135545/carcteristiques-2023.csv"
-    print(f"[get_data] Téléchargement des accidents depuis {url} ...")
+    print(f"[get_data] Téléchargement accidents 2023...")
     try:
         r = requests.get(url, timeout=30)
         r.raise_for_status()
-        with open(dest, "wb") as f:
+        with open(ACCIDENTS_CSV, "wb") as f:
             f.write(r.content)
-        print(f"[get_data] Accidents sauvegardés dans {dest}")
+        print(f"[get_data] Sauvegardé : {ACCIDENTS_CSV}")
     except Exception as e:
-        print(f"[get_data] Erreur téléchargement accidents : {e}")
-    return dest
+        print(f"[get_data] Erreur accidents 2023 : {e}")
 
-
-def fetch_cycling_infra() -> str:
-    """
-    Télécharge les données d'aménagements cyclables depuis transport.data.gouv.fr.
-    Source : https://transport.data.gouv.fr/datasets/amenagements-cyclables-france-metropolitaine
-    Retourne le chemin du fichier sauvegardé.
-    """
+def fetch_cycling_infra():
+    """Télécharge les aménagements cyclables IDF (Transport.data.gouv)."""
     ensure_dir(RAW_DIR)
-    dest = os.path.join(RAW_DIR, "amenagements_cyclables.geojson")
-    if os.path.exists(dest):
-        print(f"[get_data] Fichier cyclable déjà présent : {dest}")
-        return dest
+    if os.path.exists(CYCLABLE_GEOJSON):
+        print(f"[get_data] Fichier déjà présent : {CYCLABLE_GEOJSON}")
+        return
 
     url = "https://data.hub.iledefrance.fr/api/explore/v2.1/catalog/datasets/amenagements_cyclables_idf/exports/geojson?limit=10000"
-    print(f"[get_data] Téléchargement des aménagements cyclables...")
+    print(f"[get_data] Téléchargement aménagements cyclables...")
     try:
         r = requests.get(url, timeout=60)
         r.raise_for_status()
-        with open(dest, "wb") as f:
+        with open(CYCLABLE_GEOJSON, "wb") as f:
             f.write(r.content)
-        print(f"[get_data] Aménagements cyclables sauvegardés dans {dest}")
+        print(f"[get_data] Sauvegardé : {CYCLABLE_GEOJSON}")
     except Exception as e:
-        print(f"[get_data] Erreur téléchargement cyclable : {e}")
-    return dest
+        print(f"[get_data] Erreur cyclable : {e}")
 
-
-def fetch_communes_geojson() -> str:
-    """
-    Télécharge le GeoJSON simplifié des communes françaises (Île-de-France).
-    Retourne le chemin du fichier sauvegardé.
-    """
+def fetch_communes_geojson():
+    """Télécharge les communes d'Île-de-France (Geo API)."""
     ensure_dir(RAW_DIR)
-    dest = os.path.join(RAW_DIR, "communes_idf.geojson")
-    if os.path.exists(dest):
-        print(f"[get_data] GeoJSON communes déjà présent : {dest}")
-        return dest
+    if os.path.exists(COMMUNES_GEOJSON):
+        print(f"[get_data] Fichier déjà présent : {COMMUNES_GEOJSON}")
+        return
 
     url = "https://geo.api.gouv.fr/departements/75,77,78,91,92,93,94,95/communes?format=geojson&geometry=centre"
-    print(f"[get_data] Téléchargement des communes IDF...")
+    print(f"[get_data] Téléchargement communes IDF...")
     try:
         r = requests.get(url, timeout=30)
         r.raise_for_status()
-        with open(dest, "wb") as f:
+        with open(COMMUNES_GEOJSON, "wb") as f:
             f.write(r.content)
-        print(f"[get_data] Communes sauvegardées dans {dest}")
+        print(f"[get_data] Sauvegardé : {COMMUNES_GEOJSON}")
     except Exception as e:
-        print(f"[get_data] Erreur téléchargement communes : {e}")
-    return dest
-
+        print(f"[get_data] Erreur communes : {e}")
 
 if __name__ == "__main__":
-    fetch_accidents()
+    print("--- DÉBUT DE LA RÉCUPÉRATION DES DONNÉES ---")
+    
+    # 1. Données réelles spécifiques (SQLite)
+    fetch_accidents_velo_sqlite()
+    
+    # 2. Données générales (Fichiers bruts)
+    fetch_accidents_gouv()
     fetch_cycling_infra()
     fetch_communes_geojson()
-    print("[get_data] Toutes les données brutes ont été récupérées.")
+    
+    print("\n[get_data] Terminé ! Toutes les données sont dans :", RAW_DIR)
