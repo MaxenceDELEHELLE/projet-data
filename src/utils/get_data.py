@@ -2,6 +2,7 @@ import os
 import requests
 import sqlite3
 import pandas as pd
+import json
 
 # --- Configuration des chemins ---
 # On définit le dossier racine par rapport à l'emplacement du script
@@ -55,7 +56,7 @@ def fetch_accidents_gouv():
         print(f"[get_data] Fichier déjà présent : {ACCIDENTS_CSV}")
         return
 
-    url = "https://static.data.gouv.fr/resources/bases-de-donnees-annuelles-des-accidents-corporels-de-la-circulation-routiere-annees-de-2005-a-2023/20231231-135545/carcteristiques-2023.csv"
+    url = "https://static.data.gouv.fr/resources/bases-de-donnees-annuelles-des-accidents-corporels-de-la-circulation-routiere-annees-de-2005-a-2023/20241028-103125/caract-2023.csv"
     print(f"[get_data] Téléchargement accidents 2023...")
     try:
         r = requests.get(url, timeout=30)
@@ -73,7 +74,7 @@ def fetch_cycling_infra():
         print(f"[get_data] Fichier déjà présent : {CYCLABLE_GEOJSON}")
         return
 
-    url = "https://data.hub.iledefrance.fr/api/explore/v2.1/catalog/datasets/amenagements_cyclables_idf/exports/geojson?limit=10000"
+    url = "https://data.iledefrance.fr/api/explore/v2.1/catalog/datasets/amenagements-velo-en-ile-de-france0/exports/csv?lang=fr&timezone=Europe%2FBerlin&use_labels=true&delimiter=%3B"
     print(f"[get_data] Téléchargement aménagements cyclables...")
     try:
         r = requests.get(url, timeout=60)
@@ -86,21 +87,49 @@ def fetch_cycling_infra():
 
 def fetch_communes_geojson():
     """Télécharge les communes d'Île-de-France (Geo API)."""
+
     ensure_dir(RAW_DIR)
+
     if os.path.exists(COMMUNES_GEOJSON):
         print(f"[get_data] Fichier déjà présent : {COMMUNES_GEOJSON}")
         return
 
-    url = "https://geo.api.gouv.fr/departements/75,77,78,91,92,93,94,95/communes?format=geojson&geometry=centre"
-    print(f"[get_data] Téléchargement communes IDF...")
-    try:
-        r = requests.get(url, timeout=30)
-        r.raise_for_status()
-        with open(COMMUNES_GEOJSON, "wb") as f:
-            f.write(r.content)
-        print(f"[get_data] Sauvegardé : {COMMUNES_GEOJSON}")
-    except Exception as e:
-        print(f"[get_data] Erreur communes : {e}")
+    departements = ["75", "77", "78", "91", "92", "93", "94", "95"]
+
+    all_features = []
+
+    for dep in departements:
+
+        url = (
+            f"https://geo.api.gouv.fr/departements/"
+            f"{dep}/communes"
+            f"?format=geojson&geometry=centre"
+        )
+
+        print(f"[get_data] Téléchargement département {dep}...")
+
+        try:
+            r = requests.get(url, timeout=30)
+            r.raise_for_status()
+
+            geojson = r.json()
+
+            if "features" in geojson:
+                all_features.extend(geojson["features"])
+
+        except Exception as e:
+            print(f"[get_data] Erreur département {dep} : {e}")
+
+    final_geojson = {
+        "type": "FeatureCollection",
+        "features": all_features
+    }
+
+    with open(COMMUNES_GEOJSON, "w", encoding="utf-8") as f:
+        json.dump(final_geojson, f, ensure_ascii=False)
+
+    print(f"[get_data] Sauvegardé : {COMMUNES_GEOJSON}")
+    print(f"[get_data] Nombre de communes : {len(all_features)}")
 
 if __name__ == "__main__":
     print("--- DÉBUT DE LA RÉCUPÉRATION DES DONNÉES ---")
