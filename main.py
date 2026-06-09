@@ -1,5 +1,3 @@
-
-
 """
 main.py
 -------
@@ -35,9 +33,13 @@ from src.pages.home import build_home_layout
 
 def load_data() -> tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Charge les données nettoyées si disponibles, sinon lance le pipeline complet.
+    Charge les données nettoyées si disponibles en cache.
+    Sinon, tente de récupérer les données réelles via get_data.py.
+    En cas d'échec total, bascule sur les données d'exemple.
     Retourne (df_villes, df_timeseries).
     """
+
+    # ── 1. Cache : données nettoyées déjà présentes ──────────────────────────
     if (
         os.path.exists(config.VILLES_CLEAN_PATH)
         and os.path.exists(config.TIMESERIES_CLEAN_PATH)
@@ -45,18 +47,38 @@ def load_data() -> tuple[pd.DataFrame, pd.DataFrame]:
         df_villes = pd.read_csv(config.VILLES_CLEAN_PATH)
         df_ts = pd.read_csv(config.TIMESERIES_CLEAN_PATH)
         print("[main] Données nettoyées chargées depuis le cache.")
-    else:
-        # Vérifie si les données brutes d'exemple existent, sinon les génère
+        return df_villes, df_ts
+
+    # ── 2. Tentative de récupération des vraies données ───────────────────────
+    print("[main] Pas de cache trouvé – tentative de récupération des données réelles...")
+    try:
+        from src.utils.get_data import fetch_all
+        results = fetch_all()
+
+        # Si aucune source n'a fonctionné, on lève une exception pour basculer
+        if not any(results.values()):
+            raise RuntimeError("Toutes les sources API ont échoué.")
+
+        print("[main] Données brutes récupérées (au moins partiellement), nettoyage...")
+
+    except Exception as e:
+        print(f"[main] ⚠️  Récupération API impossible : {type(e).__name__} – {e}")
+        print("[main] Bascule sur les données d'exemple...")
+
+        # ── 3. Fallback : données d'exemple ──────────────────────────────────
         if not os.path.exists(config.VILLES_SAMPLE_PATH):
             print("[main] Génération des données d'exemple...")
             from generate_sample_data import generate_villes_data, generate_accidents_timeseries
             os.makedirs(config.RAW_DIR, exist_ok=True)
             generate_villes_data().to_csv(config.VILLES_SAMPLE_PATH, index=False)
             generate_accidents_timeseries().to_csv(config.TIMESERIES_SAMPLE_PATH, index=False)
+        else:
+            print("[main] Données d'exemple déjà présentes.")
 
-        print("[main] Nettoyage des données...")
-        from src.utils.clean_data import run_cleaning
-        df_villes, df_ts = run_cleaning()
+    # ── 4. Nettoyage (données réelles ou d'exemple) ───────────────────────────
+    print("[main] Nettoyage des données...")
+    from src.utils.clean_data import run_cleaning
+    df_villes, df_ts = run_cleaning()
 
     return df_villes, df_ts
 
@@ -141,18 +163,18 @@ def create_app(df_villes: pd.DataFrame, df_ts: pd.DataFrame) -> Dash:
             df = df[df["ville"].str.contains(search, case=False, na=False)]
 
         cols_display = [
-            {"name": "Ville", "id": "ville"},
-            {"name": "Dép.", "id": "departement"},
-            {"name": "Population", "id": "population", "type": "numeric",
+            {"name": "Ville",       "id": "ville"},
+            {"name": "Dép.",        "id": "departement"},
+            {"name": "Population",  "id": "population",           "type": "numeric",
              "format": {"specifier": ",.0f"}},
-            {"name": "Pistes (km)", "id": "km_pistes_cyclables", "type": "numeric",
+            {"name": "Pistes (km)", "id": "km_pistes_cyclables",  "type": "numeric",
              "format": {"specifier": ".1f"}},
-            {"name": "% cyclable", "id": "proportion_cyclable", "type": "numeric",
+            {"name": "% cyclable",  "id": "proportion_cyclable",  "type": "numeric",
              "format": {"specifier": ".2f"}},
-            {"name": "Acc. vélo", "id": "nb_accidents_velo", "type": "numeric"},
-            {"name": "Taux /100k", "id": "taux_accidents_velo", "type": "numeric",
+            {"name": "Acc. vélo",   "id": "nb_accidents_velo",    "type": "numeric"},
+            {"name": "Taux /100k",  "id": "taux_accidents_velo",  "type": "numeric",
              "format": {"specifier": ".1f"}},
-            {"name": "Catégorie", "id": "categorie_cyclable"},
+            {"name": "Catégorie",   "id": "categorie_cyclable"},
         ]
 
         return dash_table.DataTable(
@@ -195,9 +217,6 @@ def create_app(df_villes: pd.DataFrame, df_ts: pd.DataFrame) -> Dash:
     return app
 
 
-
-
-
 # ── Point d'entrée ────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
@@ -205,4 +224,3 @@ if __name__ == "__main__":
     app = create_app(df_villes, df_ts)
     print(f"\n🚲  Dashboard disponible sur http://{config.HOST}:{config.PORT}/\n")
     app.run(host=config.HOST, port=config.PORT, debug=config.DEBUG)
-
