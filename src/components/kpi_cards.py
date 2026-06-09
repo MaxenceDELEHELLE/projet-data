@@ -29,25 +29,25 @@ def build_kpi_cards(df: pd.DataFrame) -> html.Div:
         {
             "value": f"{total_villes}",
             "label": "Villes analysées",
-            "icon": "🏙️",
+            "icon": "",
             "color": "kpi-blue",
         },
         {
             "value": f"{total_pistes:,.0f} km",
             "label": "Pistes cyclables (total)",
-            "icon": "🛣️",
+            "icon": "",
             "color": "kpi-green",
         },
         {
             "value": f"{total_accidents:,}",
             "label": "Accidents vélo (2023)",
-            "icon": "⚠️",
+            "icon": "",
             "color": "kpi-red",
         },
         {
             "value": f"{moy_proportion:.1f} %",
             "label": "Proportion cyclable moyenne",
-            "icon": "📊",
+            "icon": "",
             "color": "kpi-teal",
         },
     ]

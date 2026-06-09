@@ -23,7 +23,7 @@ def build_header() -> html.Div:
                 children=[
                     html.Div(
                         className="header-icon",
-                        children=["🚲"],
+                        children=[""],
                     ),
                     html.Div(
                         className="header-text",
