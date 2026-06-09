@@ -29,6 +29,16 @@ MOIS_FR = {
     "septembre": "09", "octobre": "10", "novembre": "11", "décembre": "12",
 }
 
+# Mapping arrondissements → code commune principale
+# Paris : 75101–75120 → 75056
+# Lyon  : 69381–69389 → 69123
+# Marseille : 13201–13216 → 13055
+ARRONDISSEMENTS_MAP = {
+    **{f"751{str(i).zfill(2)}": "75056" for i in range(1, 21)},   # Paris
+    **{f"693{str(i).zfill(2)}": "69123" for i in range(81, 90)},   # Lyon
+    **{f"132{str(i).zfill(2)}": "13055" for i in range(1, 17)},    # Marseille
+}
+
 
 def ensure_dir(path: str) -> None:
     os.makedirs(path, exist_ok=True)
@@ -40,6 +50,8 @@ def load_accidents_sqlite() -> pd.DataFrame:
     """
     Colonnes réelles : dep, com (code INSEE 5 car.), an, mois (texte FR), grav, …
     com contient déjà le code INSEE complet → utilisé directement.
+    Les codes d'arrondissements (Paris, Lyon, Marseille) sont ramenés
+    au code de la commune principale avant la jointure.
     """
     if not os.path.exists(DB_PATH):
         raise FileNotFoundError(f"[clean_data] Base SQLite introuvable : {DB_PATH}")
@@ -50,6 +62,9 @@ def load_accidents_sqlite() -> pd.DataFrame:
     print(f"[clean_data] SQLite : {len(df)} lignes chargées.")
 
     df["code_insee"] = df["com"].astype(str).str.strip().str.zfill(5)
+    # Remplacement des codes arrondissements par le code commune principale
+    df["code_insee"] = df["code_insee"].replace(ARRONDISSEMENTS_MAP)
+
     df["annee"]      = pd.to_numeric(df["an"], errors="coerce")
     df["mois_num"]   = (
         df["mois"].astype(str).str.strip().str.lower()
@@ -64,7 +79,7 @@ def load_accidents_sqlite() -> pd.DataFrame:
 def load_cycling_infra() -> pd.DataFrame:
     if not os.path.exists(CYCLABLE_PATH):
         raise FileNotFoundError(f"[clean_data] Fichier cyclable introuvable : {CYCLABLE_PATH}")
-    df = pd.read_csv(CYCLABLE_PATH, sep=";", on_bad_lines="skip")
+    df = pd.read_csv(CYCLABLE_PATH, sep=";", on_bad_lines="skip", low_memory=False)
     print(f"[clean_data] Cyclable : {len(df)} lignes chargées.")
     return df
 
@@ -137,6 +152,7 @@ def build_villes(
     code_col = _find_col(df_cyclable, [
         "insee_com", "code_insee", "code_commune", "codecommune",
         "com_insee", "codinsee", "code_com",
+        "code_com_d", "code_com_g",   # colonnes API nationale Geovelo
     ])
     len_col = _find_col(df_cyclable, [
         "longueur", "length", "lon_tronc", "long_tronc",
@@ -155,9 +171,34 @@ def build_villes(
         if cyc_agg["km_pistes_cyclables"].median() > 500:
             cyc_agg["km_pistes_cyclables"] = (cyc_agg["km_pistes_cyclables"] / 1000).round(3)
     else:
-        print(f"[clean_data] AVERT : colonnes cyclable introuvables "
-              f"(code={code_col}, longueur={len_col}). Colonnes : {list(df_cyclable.columns)}")
-        cyc_agg = pd.DataFrame(columns=["code_insee", "km_pistes_cyclables"])
+        # Tentative de reconstitution via code_com_d + code_com_g (API Geovelo)
+        has_d = "code_com_d" in df_cyclable.columns
+        has_g = "code_com_g" in df_cyclable.columns
+
+        if has_d or has_g:
+            frames = []
+            for side_col in (["code_com_d"] if has_d else []) + (["code_com_g"] if has_g else []):
+                tmp = df_cyclable[[side_col]].copy()
+                tmp = tmp.rename(columns={side_col: "code_insee"})
+                tmp["troncons"] = 1
+                frames.append(tmp)
+
+            df_cyc = pd.concat(frames, ignore_index=True)
+            df_cyc["code_insee"] = df_cyc["code_insee"].astype(str).str.strip().str.zfill(5)
+            # Ramener aussi les arrondissements dans les données cyclables
+            df_cyc["code_insee"] = df_cyc["code_insee"].replace(ARRONDISSEMENTS_MAP)
+            cyc_agg = (
+                df_cyc.groupby("code_insee", as_index=False)["troncons"]
+                .sum()
+                .rename(columns={"troncons": "km_pistes_cyclables"})
+            )
+            # 1 tronçon ≈ 100 m en moyenne
+            cyc_agg["km_pistes_cyclables"] = (cyc_agg["km_pistes_cyclables"] * 0.1).round(3)
+            print(f"[clean_data] INFO : longueur estimée via nb tronçons (code_com_d/g).")
+        else:
+            print(f"[clean_data] AVERT : colonnes cyclable introuvables "
+                  f"(code={code_col}, longueur={len_col}). Colonnes : {list(df_cyclable.columns)}")
+            cyc_agg = pd.DataFrame(columns=["code_insee", "km_pistes_cyclables"])
 
     # ── 3. Fusion ─────────────────────────────────────────────────────────────
     df = (
@@ -195,6 +236,13 @@ def clean_villes(df: pd.DataFrame) -> pd.DataFrame:
     df = df.dropna(subset=cols_required).copy()
     df = df[df["population"] > 0].copy()
 
+    # Forcer les colonnes numériques pour éviter le TypeError dans scatter.py
+    df["proportion_cyclable"]  = pd.to_numeric(df["proportion_cyclable"],  errors="coerce").fillna(0.0)
+    df["taux_accidents_velo"]  = pd.to_numeric(df["taux_accidents_velo"],  errors="coerce").fillna(0.0)
+    df["km_pistes_cyclables"]  = pd.to_numeric(df["km_pistes_cyclables"],  errors="coerce").fillna(0.0)
+    df["nb_accidents_velo"]    = pd.to_numeric(df["nb_accidents_velo"],    errors="coerce").fillna(0).astype(int)
+    df["population"]           = pd.to_numeric(df["population"],           errors="coerce").fillna(0).astype(int)
+
     bins   = [0, 2, 5, 8, float("inf")]
     labels = ["< 2 %", "2–5 %", "5–8 %", "> 8 %"]
     df["categorie_cyclable"] = pd.cut(
@@ -213,19 +261,17 @@ def build_timeseries(df_accidents: pd.DataFrame, df_villes: pd.DataFrame) -> pd.
     """
     df = df_accidents.copy()
 
-    # Résolution code_insee → ville (IDF uniquement)
     code_to_ville = df_villes.set_index("code_insee")["ville"].to_dict()
     df["ville"] = df["code_insee"].map(code_to_ville)
     df = df.dropna(subset=["ville", "annee"])
 
     if df.empty:
-        print("[clean_data] AVERT : aucun accident ne correspond aux communes IDF.")
+        print("[clean_data] AVERT : aucun accident ne correspond aux communes.")
         return pd.DataFrame(columns=[
             "annee", "ville", "nb_accidents_velo",
             "categorie_cyclable", "proportion_cyclable",
         ])
 
-    # Agrégation par année + ville
     ts = (
         df.groupby(["annee", "ville"], as_index=False)
         .size()

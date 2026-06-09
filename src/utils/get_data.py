@@ -1,4 +1,5 @@
 import os
+import io
 import requests
 import sqlite3
 import pandas as pd
@@ -35,10 +36,9 @@ def fetch_accidents_velo_sqlite() -> bool:
 
     print(f"[get_data] Chargement des accidents vélos depuis Koumoul...")
     try:
-        # Lecture du CSV distant avec Pandas
         df = pd.read_csv(
             url,
-            sep=None,          # Détection automatique du séparateur
+            sep=None,
             engine="python",
             on_bad_lines="skip"
         )
@@ -47,7 +47,6 @@ def fetch_accidents_velo_sqlite() -> bool:
             print("[get_data] AVERTISSEMENT : DataFrame vide reçu depuis Koumoul.")
             return False
 
-        # Connexion à SQLite et sauvegarde
         conn = sqlite3.connect(DB_PATH)
         df.to_sql("data", conn, if_exists="replace", index=False)
         conn.close()
@@ -92,7 +91,9 @@ def fetch_accidents_gouv() -> bool:
 
 def fetch_cycling_infra() -> bool:
     """
-    Télécharge les aménagements cyclables IDF (data.iledefrance.fr).
+    Télécharge les aménagements cyclables France métropolitaine.
+    Source : Base Nationale des Aménagements Cyclables (Geovelo / transport.data.gouv.fr)
+    Fichier Parquet converti en CSV pour compatibilité avec clean_data.py.
     Retourne True si succès ou fichier déjà présent, False sinon.
     """
     ensure_dir(RAW_DIR)
@@ -101,18 +102,24 @@ def fetch_cycling_infra() -> bool:
         print(f"[get_data] Fichier déjà présent : {CYCLABLE_GEOJSON}")
         return True
 
-    url = (
-        "https://data.iledefrance.fr/api/explore/v2.1/catalog/datasets/"
-        "amenagements-velo-en-ile-de-france0/exports/csv"
-        "?lang=fr&timezone=Europe%2FBerlin&use_labels=true&delimiter=%3B"
-    )
-    print(f"[get_data] Téléchargement aménagements cyclables...")
+    # Base Nationale des Aménagements Cyclables — France métropolitaine (Geovelo / transport.data.gouv.fr)
+    url = "https://www.data.gouv.fr/api/1/datasets/r/7b2746c8-c2fa-44e7-b171-a317e633b9c9"
+
+    # Ancienne API IDF uniquement (conservée en commentaire) :
+    # url = (
+    #     "https://data.iledefrance.fr/api/explore/v2.1/catalog/datasets/"
+    #     "amenagements-velo-en-ile-de-france0/exports/csv"
+    #     "?lang=fr&timezone=Europe%2FBerlin&use_labels=true&delimiter=%3B"
+    # )
+
+    print(f"[get_data] Téléchargement aménagements cyclables France...")
     try:
-        r = requests.get(url, timeout=60)
+        r = requests.get(url, timeout=120)
         r.raise_for_status()
-        with open(CYCLABLE_GEOJSON, "wb") as f:
-            f.write(r.content)
-        print(f"[get_data] Sauvegardé : {CYCLABLE_GEOJSON}")
+        df = pd.read_parquet(io.BytesIO(r.content))
+        # Sauvegarde en CSV avec séparateur ";" pour compatibilité avec clean_data.py
+        df.to_csv(CYCLABLE_GEOJSON, index=False, sep=";")
+        print(f"[get_data] Sauvegardé : {len(df)} lignes dans {CYCLABLE_GEOJSON}")
         return True
 
     except Exception as e:
@@ -131,13 +138,18 @@ def fetch_communes_geojson() -> bool:
         print("[get_data] Déjà présent : communes_idf.geojson")
         return True
 
-    departements = ["75", "77", "78", "91", "92", "93", "94", "95"]
+    # Tous les départements métropolitains + DOM
+    departements = (
+        [str(i).zfill(2) for i in range(1, 96) if i != 20]  # 01 → 95 sauf 20
+        + ["2A", "2B"]                                         # Corse
+        + ["971", "972", "973", "974", "976"]                  # DOM
+    )
+
     all_features = []
     errors = []
 
     for dep in departements:
-        url = f"https://geo.api.gouv.fr/communes?codeDepartement={dep}&format=geojson"
-        print(f"[get_data] Dép {dep}...")
+        url = f"https://geo.api.gouv.fr/communes?codeDepartement={dep}&fields=nom,code,codeDepartement,population&format=geojson"
         try:
             r = requests.get(url, timeout=30)
             r.raise_for_status()
@@ -156,18 +168,21 @@ def fetch_communes_geojson() -> bool:
         print("[get_data] ERREUR : aucune commune récupérée.")
         return False
 
-    if errors:
-        print(f"[get_data] AVERTISSEMENT : départements en échec : {errors}")
+    def get_pop(f):
+        return f.get("properties", {}).get("population") or 0
 
-    geojson = {
-        "type": "FeatureCollection",
-        "features": all_features
-    }
+    top60 = sorted(
+        [f for f in all_features if get_pop(f) > 0],
+        key=get_pop,
+        reverse=True,
+    )[:60]
+
+    geojson = {"type": "FeatureCollection", "features": top60}
 
     with open(COMMUNES_GEOJSON, "w", encoding="utf-8") as f:
         json.dump(geojson, f, ensure_ascii=False)
 
-    print(f"[get_data] OK communes : {len(all_features)} features ({len(departements) - len(errors)}/{len(departements)} dép réussis)")
+    print(f"[get_data] OK communes : {len(top60)} features ({len(departements) - len(errors)}/{len(departements)} dép réussis)")
     return True
 
 
